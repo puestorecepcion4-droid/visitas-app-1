@@ -1,0 +1,34 @@
+# Node modules
+node_modules/
+
+# Android build files
+android-project/.gradle/
+android-project/app/build/
+android-project/build/
+android-project/.idea/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IntelliJ / Android Studio
+*.iml
+.idea/
+
+# Local environment files
+android-project/local.properties
+android/keystore.properties
+android/my-release-key.jks
+android/my-release-key-backup.jks
+
+# Ignore build artifacts except the signed release APK
+android-project/app/build/outputs/
+android-project/app/build/intermediates/
+android-project/app/build/generated/

@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: visitas-qru-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: GOOGLE_APPS_SCRIPT_URL
+        value: https://script.google.com/macros/s/AKfycbw-kgQZNcY6IDxGpu-HAAp61YuPpnu1pGI_iyVFLYjcq6CMhh6Bnepp8dGrSjlcoLyU/exec
+      - key: CORS_ORIGIN
+        value: https://porteriacooperativa2017-afk.github.io
