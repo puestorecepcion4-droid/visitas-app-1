@@ -1,4 +1,5 @@
-s">
+<!DOCTYPE html>
+<html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -114,16 +115,21 @@ s">
                         </div>
                     </div>
 
-                    <div class="whatsapp-contact-panel full-width" id="whatsappContactPanel" hidden>
-                        <h3><i class="fa-brands fa-whatsapp"></i> Avisar por WhatsApp (opcional)</h3>
-                        <p>Busque y elija un contacto. WhatsApp abrirá el mensaje para que usted lo revise y decida si lo envía.</p>
-                        <label for="whatsappContactSearch">Buscar contacto</label>
-                        <input type="search" id="whatsappContactSearch" placeholder="Busque por nombre, celular o interno">
-                        <div id="whatsappContactSuggestions" class="whatsapp-contact-suggestions" role="group" aria-label="Contactos disponibles" hidden></div>
-                        <div class="whatsapp-contact-selection" id="whatsappContactSelection" aria-live="polite">Seleccione un contacto para preparar el mensaje.</div>
-                        <button type="button" class="btn-report btn-report-primary" id="btnAbrirWhatsApp" disabled>
-                            <i class="fa-brands fa-whatsapp"></i> Abrir WhatsApp para revisar
-                        </button>
+                    <div class="whatsapp-contact-panel full-width" id="whatsappContactPanel" role="dialog" aria-modal="true" aria-labelledby="whatsappContactTitle" hidden>
+                        <section class="whatsapp-contact-dialog">
+                            <button type="button" class="whatsapp-contact-close" id="btnCerrarWhatsApp" aria-label="Cerrar aviso de WhatsApp">
+                                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            </button>
+                            <h3 id="whatsappContactTitle"><i class="fa-brands fa-whatsapp"></i> Avisar por WhatsApp (opcional)</h3>
+                            <p>Busque y elija un contacto. WhatsApp abrirá el mensaje para que usted lo revise y decida si lo envía.</p>
+                            <label for="whatsappContactSearch">Buscar contacto</label>
+                            <input type="search" id="whatsappContactSearch" placeholder="Busque por nombre, celular o interno">
+                            <div id="whatsappContactSuggestions" class="whatsapp-contact-suggestions" role="group" aria-label="Contactos disponibles" hidden></div>
+                            <div class="whatsapp-contact-selection" id="whatsappContactSelection" aria-live="polite">Seleccione un contacto para preparar el mensaje.</div>
+                            <button type="button" class="btn-report btn-report-primary" id="btnAbrirWhatsApp" disabled>
+                                <i class="fa-brands fa-whatsapp"></i> Abrir WhatsApp para revisar
+                            </button>
+                        </section>
                     </div>
                 </form>
             </section>
