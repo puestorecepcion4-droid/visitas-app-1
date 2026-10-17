@@ -45,6 +45,8 @@ const PORT = process.env.PORT || 3000;
 
 // URL del Apps Script publicado; se puede reemplazar por la generada al publicar el script.
 const GOOGLE_SHEETS_URL = process.env.GOOGLE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbw-kgQZNcY6IDxGpu-HAAp61YuPpnu1pGI_iyVFLYjcq6CMhh6Bnepp8dGrSjlcoLyU/exec";
+const ANFITRIONES_SHEET_ID = '1jSwHR5eaN7NP29-4JJSNTC2owf_ufrcB47jLMzUsNLk';
+const ANFITRIONES_SHEET_GID = '535293227';
 
 function normalizarVisitaDesdeGoogle(item) {
     const fechaTexto = item.Timestamp || item.timestamp || item['FECHA Y HORA'] || item.fecha || '';
@@ -251,6 +253,98 @@ app.get('/api/visitantes', async (req, res) => {
         res.status(502).json({
             success: false,
             message: 'No se pudo consultar la columna DATOS PERSONALES de la hoja MOVIMIENTOS.'
+        });
+    }
+});
+
+function normalizarEncabezadoAnfitrion(encabezado) {
+    return String(encabezado || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLocaleLowerCase('es')
+        .replace(/[^a-z0-9]/g, '');
+}
+
+function parsearCsv(texto) {
+    const filas = [];
+    let fila = [];
+    let campo = '';
+    let entreComillas = false;
+
+    for (let i = 0; i < texto.length; i += 1) {
+        const caracter = texto[i];
+        if (caracter === '"') {
+            if (entreComillas && texto[i + 1] === '"') {
+                campo += '"';
+                i += 1;
+            } else {
+                entreComillas = !entreComillas;
+            }
+        } else if (caracter === ',' && !entreComillas) {
+            fila.push(campo);
+            campo = '';
+        } else if ((caracter === '\n' || caracter === '\r') && !entreComillas) {
+            if (caracter === '\r' && texto[i + 1] === '\n') i += 1;
+            fila.push(campo);
+            if (fila.some((valor) => valor.trim())) filas.push(fila);
+            fila = [];
+            campo = '';
+        } else {
+            campo += caracter;
+        }
+    }
+
+    if (entreComillas) throw new Error('El CSV de la pestaña ANFITRIONES tiene comillas sin cerrar.');
+    if (campo || fila.length) {
+        fila.push(campo);
+        if (fila.some((valor) => valor.trim())) filas.push(fila);
+    }
+    return filas;
+}
+
+app.get('/api/anfitriones', async (req, res) => {
+    try {
+        const response = await axios.get(
+            `https://docs.google.com/spreadsheets/d/${ANFITRIONES_SHEET_ID}/export`,
+            {
+                params: { format: 'csv', gid: ANFITRIONES_SHEET_GID },
+                responseType: 'text',
+                transformResponse: [(data) => data],
+                headers: { Accept: 'text/csv' },
+            timeout: 20000
+            }
+        );
+        const filas = parsearCsv(String(response.data || '').replace(/^\uFEFF/, ''));
+        if (!filas.length) return res.json([]);
+
+        const encabezados = filas[0];
+        const columnaNombre = encabezados.findIndex((header) => {
+            const clave = normalizarEncabezadoAnfitrion(header);
+            return clave === 'nombredelanfitrion' || clave === 'nombredelanfitriona' || clave === 'anfitrion';
+        });
+        const columnaCelular = encabezados.findIndex((header) => {
+            const clave = normalizarEncabezadoAnfitrion(header);
+            return clave === 'numerodecelular' || clave === 'numerocelular' || clave === 'celular';
+        });
+        const columnaInterno = encabezados.findIndex((header) => normalizarEncabezadoAnfitrion(header).includes('interno'));
+        if (columnaNombre === -1 || columnaCelular === -1) {
+            throw new Error('La pestaña ANFITRIONES debe tener columnas Nombre del anfitrión y Número de celular.');
+        }
+
+        const contactos = filas.slice(1)
+            .map((fila) => ({
+                nombre: String(fila[columnaNombre] || '').trim(),
+                telefono: String(fila[columnaCelular] || '').replace(/\D/g, ''),
+                interno: columnaInterno === -1 ? '' : String(fila[columnaInterno] || '').trim()
+            }))
+            .filter((contacto) => contacto.nombre && contacto.telefono.length >= 8);
+
+        res.json(contactos);
+    } catch (error) {
+        console.error('No se pudieron leer los contactos de la pestaña ANFITRIONES.', error.message);
+        res.status(502).json({
+            success: false,
+            message: error.message || 'No se pudieron leer los contactos de la pestaña ANFITRIONES.'
         });
     }
 });
