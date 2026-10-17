@@ -44,7 +44,7 @@ visitasCache = cargarVisitasDesdeDisco();
 const PORT = process.env.PORT || 3000;
 
 // URL del Apps Script publicado; se puede reemplazar por la generada al publicar el script.
-const GOOGLE_SHEETS_URL = process.env.GOOGLE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbw-kgQZNcY6IDxGpu-HAAp61YuPpnu1pGI_iyVFLYjcq6CMhh6Bnepp8dGrSjlcoLyU/exec";
+const GOOGLE_SHEETS_URL = process.env.GOOGLE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbxQ7BGSTo0CQOSaHifh3p5GohZv-n0yA4Hm6iwJOs6AnZjKiOFZsfA9t5-7mG9G4pmw/exec";
 const ANFITRIONES_SHEET_ID = '1jSwHR5eaN7NP29-4JJSNTC2owf_ufrcB47jLMzUsNLk';
 const ANFITRIONES_SHEET_GID = '535293227';
 
