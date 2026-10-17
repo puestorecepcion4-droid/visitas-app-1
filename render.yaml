@@ -8,6 +8,6 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: GOOGLE_APPS_SCRIPT_URL
-        value: https://script.google.com/macros/s/AKfycbw-kgQZNcY6IDxGpu-HAAp61YuPpnu1pGI_iyVFLYjcq6CMhh6Bnepp8dGrSjlcoLyU/exec
+        value: https://script.google.com/macros/s/AKfycbxQ7BGSTo0CQOSaHifh3p5GohZv-n0yA4Hm6iwJOs6AnZjKiOFZsfA9t5-7mG9G4pmw/exec
       - key: CORS_ORIGIN
         value: https://porteriacooperativa2017-afk.github.io
