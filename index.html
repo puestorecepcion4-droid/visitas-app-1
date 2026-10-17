@@ -1,5 +1,4 @@
-<!DOCTYPE html>
-<html lang="es">
+s">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -39,27 +38,21 @@
             </div>
         </header>
 
-        <div class="view-switcher" role="tablist" aria-label="Vistas de la aplicación">
-            <button type="button" class="view-tab active" data-view="registro">Registro</button>
-            <button type="button" class="view-tab" data-view="reporte">Vista de visitas</button>
-        </div>
-
         <main class="main-content">
-            <section id="seccionRegistro" class="view-panel">
+            <section>
                 <form id="formVisita" autocomplete="off" onsubmit="event.preventDefault();">
                     
                     <div class="scanner-input-container" id="scannerInputContainer">
-                        <label for="escaneoRaw"><i class="fa-solid fa-qrcode"></i> Esperando Escaneo (DNI o QR)...</label>
-                        <input type="text" id="escaneoRaw" placeholder="Haga clic aquí y escanee..." autofocus required>
+                        <label for="escaneoRaw"><i class="fa-solid fa-qrcode"></i> Escanee DNI o QR, o escriba el DNI para buscar en cualquier sector</label>
+                        <input type="text" id="escaneoRaw" placeholder="Haga clic aquí y escanee..." autofocus required
+                            role="combobox" aria-autocomplete="list" aria-controls="dniSugerencias" aria-expanded="false">
+                        <button type="button" id="btnBuscarDni" class="btn-dni-search">Buscar por DNI</button>
+                        <span id="dniBusquedaAyuda" class="dni-search-help">La búsqueda por DNI está disponible en cualquier sector.</span>
+                        <div id="dniSugerencias" class="dni-suggestions" role="listbox" aria-label="Visitantes coincidentes" hidden></div>
                         <span class="scanner-status" id="scannerStatus">Lector Listo</span>
                     </div>
-                    <div class="form-group full-width" id="groupDniBusqueda" hidden>
-                        <label for="dniBusqueda"><i class="fa-solid fa-magnifying-glass"></i> Buscar visitante por DNI</label>
-                        <input type="text" id="dniBusqueda" inputmode="numeric" autocomplete="off" placeholder="Escriba el número de DNI">
-                        <div id="dniSugerencias" class="dni-suggestions" role="group" aria-label="Visitantes coincidentes" hidden></div>
-                    </div>
                     <button type="button" class="btn-qr" id="btnEscanearQr" onclick="iniciarEscaneo()">📸 Escanear QR</button>
-                    <div id="reader"></div>
+                    <div id="reader" hidden></div>
 
                     <div class="form-grid">
                         <div class="form-group full-width">
@@ -112,18 +105,20 @@
                     </div>
 
                     <div class="form-processing" id="formProcessing" role="status" aria-live="polite" aria-busy="true" hidden>
-                        <div class="form-processing-message" id="formProcessingMessage">Procesando el registro…</div>
-                        <div class="form-progress-track" role="progressbar" aria-label="Registro en proceso">
-                            <div class="form-progress-bar"></div>
+                        <div class="form-processing-card">
+                            <div class="form-processing-spinner" role="progressbar" aria-label="Registro en proceso">
+                                <span aria-hidden="true"></span>
+                            </div>
+                            <div class="form-processing-message" id="formProcessingMessage">Procesando el registro…</div>
+                            <div class="form-processing-help">Espere a que termine. No cierre ni actualice esta página.</div>
                         </div>
-                        <div class="form-processing-help">Espere a que termine. No cierre ni actualice esta página.</div>
                     </div>
 
                     <div class="whatsapp-contact-panel full-width" id="whatsappContactPanel" hidden>
                         <h3><i class="fa-brands fa-whatsapp"></i> Avisar por WhatsApp (opcional)</h3>
                         <p>Busque y elija un contacto. WhatsApp abrirá el mensaje para que usted lo revise y decida si lo envía.</p>
                         <label for="whatsappContactSearch">Buscar contacto</label>
-                        <input type="search" id="whatsappContactSearch" placeholder="Escriba el nombre del contacto">
+                        <input type="search" id="whatsappContactSearch" placeholder="Busque por nombre, celular o interno">
                         <div id="whatsappContactSuggestions" class="whatsapp-contact-suggestions" role="group" aria-label="Contactos disponibles" hidden></div>
                         <div class="whatsapp-contact-selection" id="whatsappContactSelection" aria-live="polite">Seleccione un contacto para preparar el mensaje.</div>
                         <button type="button" class="btn-report btn-report-primary" id="btnAbrirWhatsApp" disabled>
@@ -133,100 +128,6 @@
                 </form>
             </section>
 
-            <section id="seccionReporte" class="view-panel hidden" aria-label="Reporte de visitas">
-                <div class="report-header">
-                    <div>
-                        <h2><i class="fa-solid fa-chart-line"></i> Vista de visitas registradas</h2>
-                        <p>Resumen ejecutivo con filtros, métricas del mes, semana y año, y exportación para gerencia.</p>
-                    </div>
-                    <div class="report-actions">
-                        <button type="button" id="btnActualizarDatos" class="btn-report btn-report-primary">🔄 Cargar datos de la hoja</button>
-                        <button type="button" id="btnExportarPdf" class="btn-report btn-report-primary">📄 Descargar PDF</button>
-                        <button type="button" id="btnEnviarCorreo" class="btn-report btn-report-secondary">✉️ Enviar por correo</button>
-                    </div>
-                </div>
-
-                <div class="report-filters">
-                    <div class="filter-group">
-                        <label for="filtroTexto">Buscar</label>
-                        <input type="text" id="filtroTexto" placeholder="Nombre, empresa o observación">
-                    </div>
-                    <div class="filter-group">
-                        <label for="filtroSector">Sector</label>
-                        <select id="filtroSector">
-                            <option value="">Todos los sectores</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label for="filtroAnfitrion">Anfitrión</label>
-                        <select id="filtroAnfitrion">
-                            <option value="">Todos los anfitriones</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label for="filtroEmpresa">Empresa</label>
-                        <select id="filtroEmpresa">
-                            <option value="">Todas las empresas</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label for="filtroDesde">Desde</label>
-                        <input type="date" id="filtroDesde">
-                    </div>
-                    <div class="filter-group">
-                        <label for="filtroHasta">Hasta</label>
-                        <input type="date" id="filtroHasta">
-                    </div>
-                    <div class="filter-group">
-                        <label for="filtroModoEvento">Tipo</label>
-                        <select id="filtroModoEvento">
-                            <option value="">Todos</option>
-                            <option value="evento">Evento</option>
-                            <option value="normal">Normal</option>
-                        </select>
-                    </div>
-                    <div class="filter-group">
-                        <label>&nbsp;</label>
-                        <button type="button" id="btnLimpiarFiltros" class="btn-secondary small">Limpiar filtros</button>
-                    </div>
-                    <div class="filter-group">
-                        <label>&nbsp;</label>
-                        <button type="button" id="btnUltimos15" class="btn-report btn-report-primary small">Mostrar últimos 15</button>
-                    </div>
-                </div>
-
-                <div class="report-summary" id="reportSummary"></div>
-
-                <div class="report-footer">
-                    <div class="mail-destination">
-                        <label for="correoDestino">Correo de destino</label>
-                        <input type="email" id="correoDestino" value="gerencia@empresa.com" placeholder="gerencia@empresa.com">
-                    </div>
-                    <div class="result-counter" id="resultCounter">0 registros</div>
-                </div>
-
-                <div class="table-wrap">
-                    <table class="visitas-table">
-                        <thead>
-                            <tr>
-                                <th>Fecha</th>
-                                <th>Persona</th>
-                                <th>Empresa</th>
-                                <th>Sector</th>
-                                <th>Anfitrión</th>
-                                <th>Observaciones</th>
-                                <th>Bultos</th>
-                                <th>Tipo de visita</th>
-                            </tr>
-                        </thead>
-                        <tbody id="tablaVisitasBody">
-                            <tr>
-                                <td colspan="8" class="empty-state">No hay visitas registradas todavía.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
         </main>
     </div>
     
