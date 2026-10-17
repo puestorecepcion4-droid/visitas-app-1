@@ -176,9 +176,14 @@ app.post('/api/registro', async (req, res) => {
         if (!respuestaGoogle.status || respuestaGoogle.status < 200 || respuestaGoogle.status >= 300) {
             throw new Error(`Google Apps Script respondió con estado HTTP ${respuestaGoogle.status}.`);
         }
-        if (!resultadoGoogle || resultadoGoogle.success === false || resultadoGoogle.status === 'error') {
-            throw new Error(resultadoGoogle && resultadoGoogle.message
-                ? resultadoGoogle.message
+        const registroConfirmado = resultadoGoogle && (
+            resultadoGoogle.success === true
+            || resultadoGoogle.ok === true
+            || resultadoGoogle.status === 'success'
+        );
+        if (!registroConfirmado) {
+            throw new Error(resultadoGoogle && (resultadoGoogle.message || resultadoGoogle.error)
+                ? resultadoGoogle.message || resultadoGoogle.error
                 : 'Google Apps Script no confirmó el registro.');
         }
         console.log('Registro enviado al endpoint de Google Sheets.');
@@ -232,9 +237,14 @@ app.get('/api/visitas', async (req, res) => {
 });
 
 app.get('/api/visitantes', async (req, res) => {
-    const dni = String(req.query.dni || '').replace(/\D/g, '').slice(0, 9);
-    if (dni.length < 3) {
-        return res.status(400).json({ success: false, message: 'Ingrese al menos 3 dígitos del DNI.' });
+    const dni = String(req.query.dni || '').replace(/\D/g, '');
+    if (dni.length < 3 || dni.length > 9) {
+        return res.status(400).json({
+            success: false,
+            message: dni.length < 3
+                ? 'Ingrese al menos 3 dígitos del DNI.'
+                : 'El DNI debe tener hasta 9 dígitos.'
+        });
     }
 
     try {
