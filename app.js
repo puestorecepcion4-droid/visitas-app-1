@@ -5,9 +5,10 @@ const html5QrCode = new Html5Qrcode("reader");
 
 const API_BASE_URL = window.location.hostname.endsWith('github.io')
     ? 'https://visitas-qru-api.onrender.com'
+    : window.location.hostname === 'appassets.androidplatform.net'
+        ? 'https://visitas-qru-api.onrender.com'
     : '';
 const URL_API_GOOGLE = `${API_BASE_URL}/api/registro`;
-const URL_API_VISITAS = `${API_BASE_URL}/api/visitas`;
 
 // Dejamos esta constante vieja acá arriba por si tu HTML o algún script la requiere, no molesta.
 const URL_API_SHEETDB = 'https://sheetdb.io/api/v1/no_se_usa_pero_queda_guardada';
@@ -96,9 +97,9 @@ const maestroSectores = {
 };
 
 const escaneoRawInput = document.getElementById('escaneoRaw');
-const groupDniBusqueda = document.getElementById('groupDniBusqueda');
-const dniBusquedaInput = document.getElementById('dniBusqueda');
 const dniSugerencias = document.getElementById('dniSugerencias');
+const btnBuscarDni = document.getElementById('btnBuscarDni');
+const dniBusquedaAyuda = document.getElementById('dniBusquedaAyuda');
 const datosPersonalesInput = document.getElementById('datosPersonales');
 const empresaInput = document.getElementById('empresa');
 const groupCodigoFarmacia = document.getElementById('groupCodigoFarmacia');
@@ -119,42 +120,25 @@ const whatsappContactSearch = document.getElementById('whatsappContactSearch');
 const whatsappContactSuggestions = document.getElementById('whatsappContactSuggestions');
 const whatsappContactSelection = document.getElementById('whatsappContactSelection');
 const btnAbrirWhatsApp = document.getElementById('btnAbrirWhatsApp');
-const btnExportarPdf = document.getElementById('btnExportarPdf');
-const btnEnviarCorreo = document.getElementById('btnEnviarCorreo');
-const btnLimpiarFiltros = document.getElementById('btnLimpiarFiltros');
-const btnUltimos15 = document.getElementById('btnUltimos15');
-const btnActualizarDatos = document.getElementById('btnActualizarDatos');
-const tablaVisitasBody = document.getElementById('tablaVisitasBody');
-const reportSummary = document.getElementById('reportSummary');
-const resultCounter = document.getElementById('resultCounter');
-const filtroTexto = document.getElementById('filtroTexto');
-const filtroSector = document.getElementById('filtroSector');
-const filtroAnfitrion = document.getElementById('filtroAnfitrion');
-const filtroEmpresa = document.getElementById('filtroEmpresa');
-const filtroDesde = document.getElementById('filtroDesde');
-const filtroHasta = document.getElementById('filtroHasta');
-const filtroModoEvento = document.getElementById('filtroModoEvento');
-const correoDestino = document.getElementById('correoDestino');
-const viewTabs = document.querySelectorAll('.view-tab');
-const viewPanels = document.querySelectorAll('.view-panel');
 
 let timeoutAutoGuardar = null;
-let visitasRegistradas = [];
+let timeoutSugerenciasDni = null;
 let datosUltimoRegistroWhatsapp = null;
 let contactoWhatsappSeleccionado = null;
+let contactosWhatsappPlanilla = [];
+let estadoCargaContactosWhatsapp = 'cargando';
+let errorCargaContactosWhatsapp = '';
+let visitanteDniSeleccionado = false;
+let dniVisitanteSeleccionado = '';
 
 // Foco automático para disparar con la pistola de hardware
 document.addEventListener('click', (evento) => {
-    const camposPermitidos = ['escaneoRaw', 'sector', 'anfitrion', 'observaciones', 'empresa', 'codigoFarmacia', 'dniBusqueda', 'modoEvento'];
+    const camposPermitidos = ['escaneoRaw', 'sector', 'anfitrion', 'observaciones', 'empresa', 'codigoFarmacia', 'modoEvento'];
     if (camposPermitidos.includes(evento.target.id) || evento.target.tagName === 'OPTION'
         || evento.target.closest('#dniSugerencias, #whatsappContactPanel')) {
         return; 
     }
-    if (esMostrador()) {
-        if (dniBusquedaInput) dniBusquedaInput.focus();
-    } else if (escaneoRawInput) {
-        escaneoRawInput.focus();
-    }
+    if (escaneoRawInput) escaneoRawInput.focus();
 });
 
 function esMostrador() {
@@ -162,9 +146,13 @@ function esMostrador() {
         || anfitrionSelect.value.toLocaleLowerCase('es').includes('mostrador');
 }
 
+function obtenerDniIngresado() {
+    const valor = escaneoRawInput?.value.trim() || '';
+    return /^[\d.\s-]+$/.test(valor) ? valor.replace(/\D/g, '') : '';
+}
+
 function actualizarCamposMostrador() {
     const mostrar = esMostrador();
-    if (groupDniBusqueda) groupDniBusqueda.hidden = !mostrar;
     if (groupCodigoFarmacia) groupCodigoFarmacia.hidden = !mostrar;
     const mostrarBultos = Boolean(modoMercadoLibreCheck?.checked);
     if (groupCantidadBultos) groupCantidadBultos.hidden = !mostrarBultos;
@@ -173,10 +161,23 @@ function actualizarCamposMostrador() {
         codigoFarmaciaInput.required = mostrar;
         if (!mostrar) codigoFarmaciaInput.value = '';
     }
-    if (!mostrar && dniBusquedaInput) dniBusquedaInput.value = '';
-    if (!mostrar && dniSugerencias) {
-        dniSugerencias.replaceChildren();
-        dniSugerencias.hidden = true;
+    if (escaneoRawInput) {
+        escaneoRawInput.placeholder = modoMercadoLibreCheck?.checked
+            ? 'Escanee el código de Mercado Libre...'
+            : 'Escanee DNI o QR, o escriba el DNI para buscar...';
+    }
+    if (btnBuscarDni) btnBuscarDni.hidden = false;
+    if (dniBusquedaAyuda) {
+        dniBusquedaAyuda.hidden = false;
+        dniBusquedaAyuda.textContent = 'La búsqueda por DNI está disponible en cualquier sector.';
+    }
+    const dniActual = obtenerDniIngresado();
+    if (dniActual && !(visitanteDniSeleccionado && dniActual === dniVisitanteSeleccionado)) {
+        actualizarSugerenciasDni();
+    } else {
+        if (timeoutSugerenciasDni) clearTimeout(timeoutSugerenciasDni);
+        consultaDniActual++;
+        ocultarSugerenciasDni();
     }
 }
 
@@ -226,16 +227,37 @@ function extraerDni(datosPersonales) {
 
 let consultaDniActual = 0;
 
-async function actualizarSugerenciasDni() {
-    if (!dniBusquedaInput || !dniSugerencias) return;
-    const consulta = dniBusquedaInput.value.replace(/\D/g, '').slice(0, 9);
-    dniBusquedaInput.value = consulta;
-    datosPersonalesInput.value = '';
+function ocultarSugerenciasDni() {
+    if (!dniSugerencias) return;
     dniSugerencias.replaceChildren();
+    dniSugerencias.hidden = true;
+    escaneoRawInput?.setAttribute('aria-expanded', 'false');
+}
+
+function actualizarSugerenciasDni(inmediato = false) {
+    if (!escaneoRawInput || !dniSugerencias) return;
+    const consulta = obtenerDniIngresado();
+    if (visitanteDniSeleccionado && consulta === dniVisitanteSeleccionado) {
+        ocultarSugerenciasDni();
+        return;
+    }
+    datosPersonalesInput.value = '';
     const idConsulta = ++consultaDniActual;
+    if (timeoutSugerenciasDni) clearTimeout(timeoutSugerenciasDni);
+    dniSugerencias.replaceChildren();
 
     if (consulta.length < 3) {
-        dniSugerencias.hidden = true;
+        ocultarSugerenciasDni();
+        return;
+    }
+
+    if (consulta.length > 9) {
+        const mensaje = document.createElement('div');
+        mensaje.className = 'dni-suggestion-empty';
+        mensaje.textContent = 'El DNI debe tener hasta 9 dígitos.';
+        dniSugerencias.appendChild(mensaje);
+        dniSugerencias.hidden = false;
+        escaneoRawInput.setAttribute('aria-expanded', 'true');
         return;
     }
 
@@ -244,68 +266,130 @@ async function actualizarSugerenciasDni() {
     estado.textContent = 'Buscando en MOVIMIENTOS…';
     dniSugerencias.appendChild(estado);
     dniSugerencias.hidden = false;
+    escaneoRawInput.setAttribute('aria-expanded', 'true');
 
-    try {
-        const response = await fetch(`${API_BASE_URL}/api/visitantes?dni=${encodeURIComponent(consulta)}`);
-        const visitantes = await response.json();
-        if (idConsulta !== consultaDniActual) return;
-        if (!response.ok || !Array.isArray(visitantes)) {
-            throw new Error(visitantes.message || 'No se pudo consultar la hoja MOVIMIENTOS.');
-        }
-
-        const coincidenciasPorDni = new Map();
-        visitantes.forEach((visitante) => {
-            const datosPersonales = visitante.datosPersonales || visitante['DATOS PERSONALES'] || '';
-            const dni = String(visitante.dni || extraerDni(datosPersonales)).replace(/\D/g, '');
-            if (datosPersonales && dni.includes(consulta) && !coincidenciasPorDni.has(dni)) {
-                coincidenciasPorDni.set(dni, { datosPersonales, dni });
+    timeoutSugerenciasDni = setTimeout(async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/visitantes?dni=${encodeURIComponent(consulta)}`);
+            const visitantes = await response.json();
+            if (idConsulta !== consultaDniActual) return;
+            if (!response.ok || !Array.isArray(visitantes)) {
+                throw new Error(visitantes.message || 'No se pudo consultar la hoja MOVIMIENTOS.');
             }
-        });
 
-        dniSugerencias.replaceChildren();
-        if (!coincidenciasPorDni.size) {
-            estado.textContent = 'No hay visitantes registrados con ese DNI en MOVIMIENTOS.';
-            dniSugerencias.appendChild(estado);
-            return;
-        }
-
-        coincidenciasPorDni.forEach((visitante) => {
-            const opcion = document.createElement('button');
-            opcion.type = 'button';
-            opcion.className = 'dni-suggestion-option';
-            opcion.textContent = `${visitante.datosPersonales} (DNI: ${visitante.dni})`;
-            opcion.addEventListener('click', () => {
-                datosPersonalesInput.value = visitante.datosPersonales;
-                dniBusquedaInput.value = visitante.dni;
-                dniSugerencias.hidden = true;
-                empresaInput.focus();
+            const coincidenciasPorDni = new Map();
+            visitantes.forEach((visitante) => {
+                const datosPersonales = visitante.datosPersonales || visitante['DATOS PERSONALES'] || '';
+                const dni = String(visitante.dni || extraerDni(datosPersonales)).replace(/\D/g, '');
+                if (datosPersonales && dni.includes(consulta) && !coincidenciasPorDni.has(dni)) {
+                    coincidenciasPorDni.set(dni, { datosPersonales, dni });
+                }
             });
-            dniSugerencias.appendChild(opcion);
-        });
-    } catch (error) {
-        if (idConsulta !== consultaDniActual) return;
-        console.error('Error al buscar visitantes por DNI en MOVIMIENTOS:', error);
-        dniSugerencias.replaceChildren();
-        estado.textContent = error.message || 'No se pudo buscar en MOVIMIENTOS.';
-        dniSugerencias.appendChild(estado);
-    }
+
+            dniSugerencias.replaceChildren();
+            if (!coincidenciasPorDni.size) {
+                estado.textContent = 'No hay visitantes registrados con ese DNI en MOVIMIENTOS.';
+                dniSugerencias.appendChild(estado);
+                return;
+            }
+
+            coincidenciasPorDni.forEach((visitante) => {
+                const opcion = document.createElement('button');
+                opcion.type = 'button';
+                opcion.className = 'dni-suggestion-option';
+                opcion.setAttribute('role', 'option');
+                opcion.textContent = `${visitante.datosPersonales} (DNI: ${visitante.dni})`;
+                opcion.addEventListener('click', (evento) => {
+                    evento.stopPropagation();
+                    datosPersonalesInput.value = visitante.datosPersonales;
+                    escaneoRawInput.value = visitante.dni;
+                    visitanteDniSeleccionado = true;
+                    dniVisitanteSeleccionado = visitante.dni;
+                    ocultarSugerenciasDni();
+                    const estadoEscaner = document.getElementById('scannerStatus');
+                    if (estadoEscaner) estadoEscaner.textContent = 'Visitante encontrado en MOVIMIENTOS.';
+                    empresaInput.focus();
+                });
+                dniSugerencias.appendChild(opcion);
+            });
+        } catch (error) {
+            if (idConsulta !== consultaDniActual) return;
+            console.error('Error al buscar visitantes por DNI en MOVIMIENTOS:', error);
+            dniSugerencias.replaceChildren();
+            estado.textContent = error.message || 'No se pudo buscar en MOVIMIENTOS.';
+            dniSugerencias.appendChild(estado);
+        }
+    }, inmediato ? 0 : 180);
 }
 
-if (dniBusquedaInput) {
-    dniBusquedaInput.addEventListener('input', actualizarSugerenciasDni);
+if (btnBuscarDni) {
+    btnBuscarDni.addEventListener('click', () => {
+        if (!obtenerDniIngresado()) {
+            dniSugerencias.replaceChildren();
+            const mensaje = document.createElement('div');
+            mensaje.className = 'dni-suggestion-empty';
+            mensaje.textContent = 'Ingrese un DNI usando números antes de buscar.';
+            dniSugerencias.appendChild(mensaje);
+            dniSugerencias.hidden = false;
+            escaneoRawInput?.setAttribute('aria-expanded', 'true');
+            escaneoRawInput?.focus();
+            return;
+        }
+        actualizarSugerenciasDni(true);
+    });
+}
+
+if (escaneoRawInput) {
+    escaneoRawInput.addEventListener('keydown', (evento) => {
+        if (evento.key === 'Escape') {
+            ocultarSugerenciasDni();
+            return;
+        }
+        if (!dniSugerencias || dniSugerencias.hidden) return;
+        if (evento.key === 'ArrowDown') {
+            evento.preventDefault();
+            dniSugerencias.querySelector('[role="option"]')?.focus();
+        } else if (evento.key === 'Enter') {
+            const primeraOpcion = dniSugerencias.querySelector('[role="option"]');
+            if (primeraOpcion) {
+                evento.preventDefault();
+                primeraOpcion.click();
+            }
+        }
+    });
 }
 
 function obtenerContactosWhatsapp() {
     const contactos = new Map();
-    Object.entries(maestroSectores).forEach(([sector, anfitriones]) => {
-        anfitriones.forEach(({ nombre, contacto }) => {
-            const telefono = String(contacto || '').replace(/\D/g, '');
-            if (!nombre || telefono.length < 10) return;
-            const clave = `${nombre.trim().toLocaleLowerCase('es')}|${telefono}`;
-            if (!contactos.has(clave)) contactos.set(clave, { nombre: nombre.trim(), telefono, sector });
-        });
+    contactosWhatsappPlanilla.forEach(({ nombre, telefono, interno }) => {
+        const clave = `${nombre.toLocaleLowerCase('es')}|${telefono}`;
+        if (!contactos.has(clave)) contactos.set(clave, { nombre, telefono, interno });
     });
     return [...contactos.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+}
+
+async function cargarContactosWhatsapp() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/anfitriones`, { cache: 'no-store' });
+        const resultado = await response.json();
+        if (!response.ok || !Array.isArray(resultado)) {
+            throw new Error(resultado.message || 'No se pudieron cargar los contactos de ANFITRIONES.');
+        }
+        contactosWhatsappPlanilla = resultado
+            .map((contacto) => ({
+                nombre: String(contacto.nombre || '').trim(),
+                telefono: String(contacto.telefono || '').replace(/\D/g, ''),
+                interno: String(contacto.interno || '').trim()
+            }))
+            .filter((contacto) => contacto.nombre && contacto.telefono.length >= 8);
+        estadoCargaContactosWhatsapp = 'cargados';
+        errorCargaContactosWhatsapp = '';
+    } catch (error) {
+        estadoCargaContactosWhatsapp = 'error';
+        errorCargaContactosWhatsapp = error.message || 'No se pudieron cargar los contactos de ANFITRIONES.';
+        console.error('Error al cargar contactos desde la pestaña ANFITRIONES:', error);
+    }
+    if (whatsappContactSearch?.value.trim()) mostrarSugerenciasContactosWhatsapp();
 }
 
 function mostrarSugerenciasContactosWhatsapp() {
@@ -321,15 +405,26 @@ function mostrarSugerenciasContactosWhatsapp() {
         return;
     }
 
+    if (estadoCargaContactosWhatsapp === 'cargando') {
+        mostrarMensajeContactosWhatsapp('Cargando contactos desde ANFITRIONES…');
+        return;
+    }
+    if (estadoCargaContactosWhatsapp === 'error') {
+        mostrarMensajeContactosWhatsapp(`No se pudieron cargar los contactos: ${errorCargaContactosWhatsapp}`);
+        return;
+    }
+
+    const terminosConsulta = consulta.split(/\s+/).filter(Boolean);
     const coincidencias = obtenerContactosWhatsapp()
-        .filter((contacto) => normalizarTexto(contacto.nombre).includes(consulta))
+        .filter((contacto) => {
+            const datosContacto = normalizarTexto(
+                `${contacto.nombre} ${contacto.telefono} ${contacto.interno}`
+            );
+            return terminosConsulta.every((termino) => datosContacto.includes(termino));
+        })
         .slice(0, 20);
     if (!coincidencias.length) {
-        const mensaje = document.createElement('div');
-        mensaje.className = 'dni-suggestion-empty';
-        mensaje.textContent = 'No se encontraron contactos con ese nombre.';
-        whatsappContactSuggestions.appendChild(mensaje);
-        whatsappContactSuggestions.hidden = false;
+        mostrarMensajeContactosWhatsapp('No se encontraron contactos por nombre, celular o interno en ANFITRIONES.');
         return;
     }
 
@@ -337,7 +432,7 @@ function mostrarSugerenciasContactosWhatsapp() {
         const opcion = document.createElement('button');
         opcion.type = 'button';
         opcion.className = 'dni-suggestion-option';
-        opcion.textContent = `${contacto.nombre} — ${contacto.sector}`;
+        opcion.textContent = `${contacto.nombre} — ${contacto.telefono}${contacto.interno ? ` — Int. ${contacto.interno}` : ''}`;
         opcion.addEventListener('click', () => {
             contactoWhatsappSeleccionado = contacto;
             whatsappContactSearch.value = contacto.nombre;
@@ -347,6 +442,14 @@ function mostrarSugerenciasContactosWhatsapp() {
         });
         whatsappContactSuggestions.appendChild(opcion);
     });
+    whatsappContactSuggestions.hidden = false;
+}
+
+function mostrarMensajeContactosWhatsapp(texto) {
+    const mensaje = document.createElement('div');
+    mensaje.className = 'dni-suggestion-empty';
+    mensaje.textContent = texto;
+    whatsappContactSuggestions.appendChild(mensaje);
     whatsappContactSuggestions.hidden = false;
 }
 
@@ -381,7 +484,7 @@ if (btnAbrirWhatsApp) {
                 `📝 *Observaciones:* ${visita.observaciones || 'Ninguna'}`
             ].join('\n');
         const url = `https://wa.me/${telefono}?text=${encodeURIComponent(mensaje)}`;
-        window.open(url, '_blank', 'noopener,noreferrer');
+        window.location.assign(url);
     });
 }
 
@@ -391,9 +494,28 @@ if (btnAbrirWhatsApp) {
 if (escaneoRawInput) {
     escaneoRawInput.addEventListener('input', () => {
         const rawText = escaneoRawInput.value.trim();
-        if (!rawText) return;
-
         if (timeoutAutoGuardar) clearTimeout(timeoutAutoGuardar);
+        if (visitanteDniSeleccionado) {
+            datosPersonalesInput.value = '';
+            visitanteDniSeleccionado = false;
+            dniVisitanteSeleccionado = '';
+        }
+        if (!rawText) {
+            if (timeoutSugerenciasDni) clearTimeout(timeoutSugerenciasDni);
+            consultaDniActual++;
+            ocultarSugerenciasDni();
+            return;
+        }
+
+        if (obtenerDniIngresado()) {
+            datosPersonalesInput.value = '';
+            actualizarSugerenciasDni();
+            return;
+        }
+
+        consultaDniActual++;
+        if (timeoutSugerenciasDni) clearTimeout(timeoutSugerenciasDni);
+        ocultarSugerenciasDni();
 
         // Desarmado de DNI tarjeta de formato argentino
         if (rawText.includes('@')) {
@@ -492,12 +614,12 @@ if (modoMercadoLibreCheck) {
 function limpiarFormulario() {
     if (escaneoRawInput) escaneoRawInput.value = '';
     if (datosPersonalesInput) datosPersonalesInput.value = '';
-    if (dniBusquedaInput) dniBusquedaInput.value = '';
+    visitanteDniSeleccionado = false;
+    dniVisitanteSeleccionado = '';
     if (codigoFarmaciaInput) codigoFarmaciaInput.value = '';
-    if (dniSugerencias) {
-        dniSugerencias.replaceChildren();
-        dniSugerencias.hidden = true;
-    }
+    if (timeoutSugerenciasDni) clearTimeout(timeoutSugerenciasDni);
+    consultaDniActual++;
+    ocultarSugerenciasDni();
     if (!modoEventoCheck.checked) {
         if (empresaInput) empresaInput.value = '';
         if (sectorSelect) sectorSelect.value = '';
@@ -506,331 +628,54 @@ function limpiarFormulario() {
     const obsField = document.getElementById('observaciones');
     if (obsField) obsField.value = '';
     actualizarCamposMostrador();
-    if (esMostrador() && dniBusquedaInput) dniBusquedaInput.focus();
-    else if (escaneoRawInput) escaneoRawInput.focus();
+    if (escaneoRawInput) escaneoRawInput.focus();
 }
 
 if (btnLimpiar) btnLimpiar.addEventListener('click', limpiarFormulario);
-
-function abrirVista(vista) {
-    viewPanels.forEach((panel) => {
-        panel.classList.toggle('hidden', panel.id !== (vista === 'reporte' ? 'seccionReporte' : 'seccionRegistro'));
-    });
-    viewTabs.forEach((tab) => {
-        tab.classList.toggle('active', tab.dataset.view === vista);
-    });
-    // Aplicar clase de vista en el body para paleta de colores
-    document.body.classList.remove('view-principal', 'view-registro');
-    if (vista === 'reporte') {
-        document.body.classList.add('view-principal');
-        document.body.classList.remove('modo-mercadolibre');
-    } else {
-        document.body.classList.add('view-registro');
-    }
-}
-
-viewTabs.forEach((tab) => {
-    tab.addEventListener('click', () => abrirVista(tab.dataset.view));
-});
-
-function normalizarTexto(valor) {
-    return String(valor || '').toString().toLowerCase().normalize('NFD').replace(/[^a-z0-9\s]/g, '');
-}
-
-function obtenerFechaLocal(dateValue) {
-    const fecha = new Date(dateValue);
-    const anio = fecha.getFullYear();
-    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
-    const dia = String(fecha.getDate()).padStart(2, '0');
-    return `${anio}-${mes}-${dia}`;
-}
-
-function obtenerFechaHoraLocal(dateValue) {
-    const fecha = new Date(dateValue);
-    return fecha.toLocaleString('es-AR', {
-        dateStyle: 'short',
-        timeStyle: 'short'
-    });
-}
-
-function obtenerPeriodo(fecha, tipo) {
-    const date = new Date(fecha);
-    if (tipo === 'mes') {
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-    }
-    if (tipo === 'semana') {
-        const inicio = new Date(date);
-        const dia = inicio.getDay();
-        const diff = inicio.getDate() - dia + (dia === 0 ? -6 : 1);
-        inicio.setDate(diff);
-        return `${inicio.getFullYear()}-${String(inicio.getMonth() + 1).padStart(2, '0')}-${String(inicio.getDate()).padStart(2, '0')}`;
-    }
-    return `${date.getFullYear()}`;
-}
-
-function crearVisitaDesdeRegistro(datosObj) {
-    const ahora = new Date();
-    return {
-        id: `${ahora.getTime()}-${Math.random().toString(36).slice(2, 8)}`,
-        fecha: ahora.toISOString(),
-        fechaTexto: obtenerFechaHoraLocal(ahora),
-        datosPersonales: datosObj.datosPersonales || '',
-        empresa: datosObj.empresa || '',
-        codigoFarmacia: datosObj.codigoFarmacia || '',
-        sector: datosObj.sector || '',
-        anfitrion: datosObj.anfitrion || '',
-        observaciones: datosObj.observaciones || 'SIN OBSERVACIONES',
-        modoEvento: Boolean(datosObj.modoEvento),
-        bultos: Number(datosObj.bultos) || 0,
-        perteneciente: Boolean(datosObj.perteneciente)
-    };
-}
-
-function normalizarVisitaDesdeHoja(item) {
-    const fechaRaw = item.fecha || item.Timestamp || item.timestamp || item['Fecha y hora'] || new Date().toISOString();
-    return {
-        id: item.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        fecha: new Date(fechaRaw).toISOString(),
-        fechaTexto: item.fechaTexto || obtenerFechaHoraLocal(fechaRaw),
-        datosPersonales: item.datosPersonales || item['Datos Personales'] || '',
-        empresa: item.empresa || item.Empresa || '',
-        codigoFarmacia: item.codigoFarmacia || item['Código de Farmacia'] || item['CODIGO DE FARMACIA'] || '',
-        sector: item.sector || item.Sector || '',
-        anfitrion: item.anfitrion || item['Anfitrión'] || '',
-        observaciones: item.observaciones || item.Observaciones || 'SIN OBSERVACIONES',
-        tipoVisita: item.tipoVisita || item['Tipo de visita'] || item['Tipo de Visita'] || (item.modoEvento ? 'Modo Evento' : 'Modo Normal'),
-        modoEvento: Boolean(item.modoEvento || (item.tipoVisita && String(item.tipoVisita).toLowerCase().includes('evento')))
-    };
-}
-
-function poblarFiltros() {
-    if (!filtroSector || !filtroAnfitrion || !filtroEmpresa) return;
-
-    const sectors = [...new Set(visitasRegistradas.map((visita) => visita.sector).filter(Boolean))].sort();
-    const anfitriones = [...new Set(visitasRegistradas.map((visita) => visita.anfitrion).filter(Boolean))].sort();
-    const empresas = [...new Set(visitasRegistradas.map((visita) => visita.empresa).filter(Boolean))].sort();
-
-    filtroSector.innerHTML = '<option value="">Todos los sectores</option>' + sectors.map((value) => `<option value="${value}">${value}</option>`).join('');
-    filtroAnfitrion.innerHTML = '<option value="">Todos los anfitriones</option>' + anfitriones.map((value) => `<option value="${value}">${value}</option>`).join('');
-    filtroEmpresa.innerHTML = '<option value="">Todas las empresas</option>' + empresas.map((value) => `<option value="${value}">${value}</option>`).join('');
-}
-
-async function cargarVisitasDesdeServidor(mostrarMensaje = false) {
-    try {
-        const response = await fetch(URL_API_VISITAS, { method: 'GET' });
-        const data = await response.json();
-        const lista = Array.isArray(data) ? data : (Array.isArray(data.visitas) ? data.visitas : []);
-        if (lista.length) {
-            visitasRegistradas = lista.map(normalizarVisitaDesdeHoja);
-            poblarFiltros();
-            filtrarVisitas();
-            if (mostrarMensaje && resultCounter) {
-                resultCounter.textContent = `${visitasRegistradas.length} registros cargados desde la hoja`;
-            }
-        } else if (mostrarMensaje && resultCounter) {
-            resultCounter.textContent = 'No se encontraron registros nuevos';
-        }
-    } catch (error) {
-        console.warn('No se pudieron cargar las visitas desde el servidor, se usará el estado local.', error);
-        if (mostrarMensaje && resultCounter) {
-            resultCounter.textContent = 'No se pudo actualizar desde la hoja';
-        }
-    }
-}
-
-function filtrarVisitas() {
-    const texto = normalizarTexto(filtroTexto?.value || '');
-    const sector = (filtroSector?.value || '').trim().toUpperCase();
-    const anfitrion = (filtroAnfitrion?.value || '').trim().toUpperCase();
-    const empresa = (filtroEmpresa?.value || '').trim().toUpperCase();
-    const desde = filtroDesde?.value || '';
-    const hasta = filtroHasta?.value || '';
-    const modo = (filtroModoEvento?.value || '').trim().toLowerCase();
-
-    const filtradas = visitasRegistradas.filter((visita) => {
-        const fechaVisita = visita.fecha ? visita.fecha.slice(0, 10) : '';
-        const coincideTexto = !texto || [
-            visita.datosPersonales,
-            visita.empresa,
-            visita.observaciones,
-            visita.sector,
-            visita.anfitrion,
-            visita.tipoVisita
-        ].some((campo) => normalizarTexto(campo).includes(texto));
-        const coincideSector = !sector || (visita.sector || '').toUpperCase() === sector;
-        const coincideAnfitrion = !anfitrion || (visita.anfitrion || '').toUpperCase() === anfitrion;
-        const coincideEmpresa = !empresa || (visita.empresa || '').toUpperCase() === empresa;
-        const coincideDesde = !desde || fechaVisita >= desde;
-        const coincideHasta = !hasta || fechaVisita <= hasta;
-        const coincideModo = !modo || (modo === 'evento' ? visita.modoEvento : !visita.modoEvento);
-        return coincideTexto && coincideSector && coincideAnfitrion && coincideEmpresa && coincideDesde && coincideHasta && coincideModo;
-    });
-
-    renderizarReporte(filtradas);
-}
-
-function renderizarReporte(lista) {
-    if (!tablaVisitasBody || !reportSummary || !resultCounter) return;
-
-    const hoy = new Date();
-    const mesActual = obtenerPeriodo(hoy, 'mes');
-    const semanaActual = obtenerPeriodo(hoy, 'semana');
-    const anioActual = obtenerPeriodo(hoy, 'anio');
-
-    const total = lista.length;
-    const mes = lista.filter((visita) => obtenerPeriodo(visita.fecha, 'mes') === mesActual).length;
-    const semana = lista.filter((visita) => obtenerPeriodo(visita.fecha, 'semana') === semanaActual).length;
-    const anio = lista.filter((visita) => obtenerPeriodo(visita.fecha, 'anio') === anioActual).length;
-    const empresasFrecuentes = [...new Set(lista.map((visita) => visita.empresa).filter(Boolean))];
-    const topEmpresa = empresasFrecuentes.length ? empresasFrecuentes[0] : 'Sin datos';
-    const totalBultos = lista.reduce((acc, v) => acc + (Number(v.bultos) || 0), 0);
-
-    reportSummary.innerHTML = `
-        <div class="summary-card"><strong>${total}</strong><span>Total de visitas</span></div>
-        <div class="summary-card"><strong>${mes}</strong><span>En el mes</span></div>
-        <div class="summary-card"><strong>${semana}</strong><span>En la semana</span></div>
-        <div class="summary-card"><strong>${anio}</strong><span>En el año</span></div>
-        <div class="summary-card"><strong>${topEmpresa}</strong><span>Empresa más recurrente</span></div>
-        <div class="summary-card"><strong>${totalBultos}</strong><span>Total bultos</span></div>
-    `;
-
-    resultCounter.textContent = `${total} registros filtrados`;
-
-    if (!lista.length) {
-        tablaVisitasBody.innerHTML = '<tr><td colspan="8" class="empty-state">No hay visitas para los filtros aplicados.</td></tr>';
-        return;
-    }
-
-    tablaVisitasBody.innerHTML = lista.map((visita) => `
-        <tr>
-            <td>${visita.fechaTexto}</td>
-            <td>${visita.datosPersonales}</td>
-            <td>${visita.empresa || 'Sin empresa'}</td>
-            <td>${visita.sector || 'Sin sector'}</td>
-            <td>${visita.anfitrion || 'Sin anfitrión'}</td>
-            <td>${visita.observaciones || 'Sin observaciones'}</td>
-            <td>${visita.bultos || 0}</td>
-            <td>${visita.tipoVisita || (visita.modoEvento ? 'Modo Evento' : 'Modo Normal')}</td>
-        </tr>
-    `).join('');
-}
-
-function limpiarFiltros() {
-    if (filtroTexto) filtroTexto.value = '';
-    if (filtroSector) filtroSector.value = '';
-    if (filtroAnfitrion) filtroAnfitrion.value = '';
-    if (filtroEmpresa) filtroEmpresa.value = '';
-    if (filtroDesde) filtroDesde.value = '';
-    if (filtroHasta) filtroHasta.value = '';
-    if (filtroModoEvento) filtroModoEvento.value = '';
-    filtrarVisitas();
-}
-
-function mostrarUltimos15() {
-    abrirVista('reporte');
-    const lista = Array.isArray(visitasRegistradas) && visitasRegistradas.length
-        ? [...visitasRegistradas].sort((a, b) => new Date(b.fecha || 0) - new Date(a.fecha || 0)).slice(0, 15)
-        : [];
-    renderizarReporte(lista);
-    if (resultCounter) {
-        resultCounter.textContent = `${lista.length} registros recientes`;
-    }
-    if (tablaVisitasBody) {
-        tablaVisitasBody.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-}
-
-function generarContenidoCorreo() {
-    const fecha = new Date().toLocaleDateString('es-AR', { dateStyle: 'long' });
-    const total = visitasRegistradas.length;
-    const filt = visitasRegistradas.filter((visita) => {
-        const texto = normalizarTexto(filtroTexto?.value || '');
-        const sector = (filtroSector?.value || '').trim().toUpperCase();
-        const anfitrion = (filtroAnfitrion?.value || '').trim().toUpperCase();
-        const empresa = (filtroEmpresa?.value || '').trim().toUpperCase();
-        const desde = filtroDesde?.value || '';
-        const hasta = filtroHasta?.value || '';
-        const modo = (filtroModoEvento?.value || '').trim().toLowerCase();
-        const fechaVisita = visita.fecha ? visita.fecha.slice(0, 10) : '';
-        const coincideTexto = !texto || [visita.datosPersonales, visita.empresa, visita.observaciones, visita.sector, visita.anfitrion].some((campo) => normalizarTexto(campo).includes(texto));
-        const coincideSector = !sector || visita.sector.toUpperCase() === sector;
-        const coincideAnfitrion = !anfitrion || visita.anfitrion.toUpperCase() === anfitrion;
-        const coincideEmpresa = !empresa || visita.empresa.toUpperCase() === empresa;
-        const coincideDesde = !desde || fechaVisita >= desde;
-        const coincideHasta = !hasta || fechaVisita <= hasta;
-        const coincideModo = !modo || (modo === 'evento' ? visita.modoEvento : !visita.modoEvento);
-        return coincideTexto && coincideSector && coincideAnfitrion && coincideEmpresa && coincideDesde && coincideHasta && coincideModo;
-    });
-
-    const resumen = `Reporte ejecutivo de visitas registradas\nFecha: ${fecha}\nTotal de registros: ${filt.length} de ${total}\nResumen: ${filt.length} visitas registradas con los filtros aplicados.`;
-    const tabla = filt.slice(0, 10).map((visita) => `- ${visita.fechaTexto}: ${visita.datosPersonales} | ${visita.empresa || 'Sin empresa'} | ${visita.sector || 'Sin sector'}`).join('\n');
-    return `${resumen}\n\nDetalle principal:\n${tabla}\n\nSaludos cordiales,\nEquipo de administración`;
-}
-
-function exportarPdf() {
-    if (!visitasRegistradas.length) {
-        alert('No hay visitas cargadas para exportar.');
-        return;
-    }
-    window.print();
-}
-
-function enviarCorreo() {
-    const destino = correoDestino?.value || 'gerencia@empresa.com';
-    const asunto = encodeURIComponent('Reporte ejecutivo de visitas registradas');
-    const cuerpo = encodeURIComponent(generarContenidoCorreo());
-    window.location.href = `mailto:${destino}?subject=${asunto}&body=${cuerpo}`;
-}
-
-if (btnExportarPdf) btnExportarPdf.addEventListener('click', exportarPdf);
-if (btnEnviarCorreo) btnEnviarCorreo.addEventListener('click', enviarCorreo);
-if (btnLimpiarFiltros) btnLimpiarFiltros.addEventListener('click', limpiarFiltros);
-if (btnUltimos15) btnUltimos15.addEventListener('click', mostrarUltimos15);
-if (btnActualizarDatos) {
-    btnActualizarDatos.addEventListener('click', async () => {
-        await cargarVisitasDesdeServidor(true);
-        abrirVista('reporte');
-    });
-}
-[
-    filtroTexto,
-    filtroSector,
-    filtroAnfitrion,
-    filtroEmpresa,
-    filtroDesde,
-    filtroHasta,
-    filtroModoEvento
-].forEach((campo) => {
-    if (campo) campo.addEventListener('input', filtrarVisitas);
-    if (campo) campo.addEventListener('change', filtrarVisitas);
-});
 
 // Escaneo por medio de la lente de la cámara del celular
 async function iniciarEscaneo() {
     if (html5QrCode.isScanning) return;
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-        const mensaje = 'La cámara requiere HTTPS. Abra la aplicación desde su dirección segura (https://) y permita el acceso a la cámara.';
+        const mensaje = 'Este entorno no permite acceder a la cámara. Actualice Android System WebView o abra QR-U desde HTTPS.';
         const estado = document.getElementById('scannerStatus');
         if (estado) estado.textContent = mensaje;
         alert(mensaje);
         return;
     }
 
+    const lector = document.getElementById('reader');
+    if (lector) lector.hidden = false;
     const estado = document.getElementById('scannerStatus');
     if (estado) estado.textContent = 'Solicitando permiso para usar la cámara…';
     try {
+        if (window.QRUAndroid?.requestCameraPermission) {
+            const permisoConcedido = await new Promise((resolve) => {
+                window.onNativeCameraPermissionResult = (concedido) => {
+                    window.onNativeCameraPermissionResult = null;
+                    resolve(Boolean(concedido));
+                };
+                window.QRUAndroid.requestCameraPermission();
+            });
+            if (!permisoConcedido) {
+                const errorPermiso = new Error('Active el permiso Cámara para QR-U Visitas en los ajustes de Android.');
+                errorPermiso.name = 'NotAllowedError';
+                throw errorPermiso;
+            }
+        }
+
+        const camaras = await Html5Qrcode.getCameras();
+        if (!camaras.length) {
+            throw new Error('No se encontró una cámara disponible en este dispositivo.');
+        }
+        const camaraTrasera = camaras.find(({ label }) => /back|rear|environment|trasera|posterior/i.test(label));
+        const camaraElegida = camaraTrasera || camaras[0];
+
         await html5QrCode.start(
-            { facingMode: "environment" },
-            { 
-                fps: 20, 
-                // Subimos a 240 para que el DNI entre un poco más cómodo pero siga estando cerca
-                qrbox: { width: 240, height: 240 }, 
-                videoConstraints: {
-                    facingMode: "environment",
-                    // Dejamos un rango estándar para que no tire errores de hardware
-                    width: { min: 640, ideal: 1280 },
-                    height: { min: 480, ideal: 720 }
-                }
+            camaraElegida.id,
+            {
+                fps: 10,
+                qrbox: { width: 240, height: 240 }
             },
             (decodedText) => {
                 if (escaneoRawInput) {
@@ -840,6 +685,8 @@ async function iniciarEscaneo() {
                 if (estado) estado.textContent = 'Código leído correctamente.';
                 html5QrCode.stop().catch((error) => {
                     console.error('No se pudo detener la cámara después del escaneo.', error);
+                }).finally(() => {
+                    if (lector) lector.hidden = true;
                 });
             },
             (errorMessage) => {
@@ -847,31 +694,19 @@ async function iniciarEscaneo() {
             }
         );
 
-        // Intenta aplicar el zoom si la cámara elegida lo soporta
-        const videoTrack = html5QrCode.getRunningTrack();
-        if (estado) estado.textContent = 'Cámara activa. Centre el código dentro del recuadro.';
-        setTimeout(() => {
-            if (videoTrack) {
-                const capabilities = videoTrack.getCapabilities();
-                if (capabilities.zoom) {
-                    videoTrack.applyConstraints({
-                        advanced: [{ zoom: 2.0 }] 
-                    }).catch(err => console.log("Zoom no soportado en esta cámara de respaldo"));
-                }
-            }
-        }, 650); 
-
+        if (estado) estado.textContent = `Cámara activa (${camaraElegida.label || 'trasera'}). Centre el código dentro del recuadro.`;
     } catch (err) {
+        if (lector) lector.hidden = true;
         console.error('No se pudo iniciar la cámara para escanear.', err);
-        let mensaje = 'No se pudo iniciar la cámara.';
+        let mensaje = err.message || 'No se pudo iniciar la cámara.';
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-            mensaje = 'Permiso de cámara denegado. Habilite el acceso a la cámara en los permisos del navegador o de la aplicación y vuelva a intentar.';
+            mensaje = 'Permiso de cámara denegado. Habilite Cámara en Ajustes > Aplicaciones > QR-U Visitas > Permisos y revise que el acceso general a la cámara de Android esté activado.';
         } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
             mensaje = 'No se encontró una cámara disponible en este dispositivo.';
         } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
             mensaje = 'La cámara está siendo usada por otra aplicación. Ciérrela y vuelva a intentar.';
         } else if (err.name === 'OverconstrainedError') {
-            mensaje = 'No se pudo usar la cámara trasera. Revise los permisos o intente con otro navegador.';
+            mensaje = 'Android no pudo iniciar esa cámara. Cierre otras aplicaciones que la usen y vuelva a intentar.';
         }
         if (estado) estado.textContent = mensaje;
         alert(mensaje);
@@ -890,8 +725,7 @@ if (btnRegistrar) {
         if (!anfitrionSelect.value.trim()) camposObligatoriosFaltantes.push('Anfitrión / Quien Recibe');
         if (camposObligatoriosFaltantes.length) {
             alert(`Complete los siguientes campos obligatorios: ${camposObligatoriosFaltantes.join(', ')}.`);
-            if (!datosPersonalesInput.value.trim() && esMostrador()) dniBusquedaInput?.focus();
-            else if (!datosPersonalesInput.value.trim()) escaneoRawInput?.focus();
+            if (!datosPersonalesInput.value.trim()) escaneoRawInput?.focus();
             else if (!sectorSelect.value.trim()) sectorSelect.focus();
             else anfitrionSelect.focus();
             return;
@@ -916,7 +750,7 @@ if (btnRegistrar) {
         }
         if (esMostrador() && !datosPersonalesInput.value) {
             alert('Busque y seleccione al visitante por DNI para registrar un ingreso por Mostrador.');
-            dniBusquedaInput?.focus();
+            escaneoRawInput?.focus();
             return;
         }
         whatsappContactPanel.hidden = true;
@@ -940,7 +774,7 @@ if (btnRegistrar) {
 
         btnRegistrar.disabled = true;
         formProcessing.hidden = false;
-        let faseProcesamiento = 'Guardando el ingreso en la hoja de cálculo';
+        const faseProcesamiento = 'Guardando el ingreso en la hoja de cálculo';
         const inicioProcesamiento = Date.now();
         const controladorEnvio = new AbortController();
         const intervaloProcesamiento = setInterval(() => {
@@ -971,23 +805,18 @@ if (btnRegistrar) {
                 throw new Error(resultado.message || `El servidor rechazó el registro (HTTP ${respuesta.status}).`);
             }
 
-            const visitaCreada = crearVisitaDesdeRegistro(datosObj);
-            visitasRegistradas.unshift(visitaCreada);
-            poblarFiltros();
-            filtrarVisitas();
-            faseProcesamiento = 'Ingreso guardado. Actualizando los registros';
-            formProcessingMessage.textContent = faseProcesamiento + '…';
-            await cargarVisitasDesdeServidor();
-
             alert("✅ Registro enviado a la hoja de cálculo con éxito.");
 
             limpiarFormulario();
-            abrirVista('registro');
             datosUltimoRegistroWhatsapp = datosObj;
             whatsappContactSearch.value = '';
             whatsappContactSuggestions.replaceChildren();
             whatsappContactSuggestions.hidden = true;
-            whatsappContactSelection.textContent = 'Seleccione un contacto para preparar el mensaje.';
+            whatsappContactSelection.textContent = estadoCargaContactosWhatsapp === 'error'
+                ? `No se pudieron cargar los contactos de ANFITRIONES: ${errorCargaContactosWhatsapp}`
+                : estadoCargaContactosWhatsapp === 'cargando'
+                    ? 'Cargando contactos desde ANFITRIONES…'
+                    : 'Busque y seleccione un contacto de ANFITRIONES.';
             whatsappContactPanel.hidden = false;
 
         } catch (error) {
@@ -1009,35 +838,6 @@ if (btnRegistrar) {
 document.addEventListener('DOMContentLoaded', () => {
     cargarSectores();
     actualizarCamposMostrador();
-    visitasRegistradas = [
-        {
-            id: 'demo-1',
-            fecha: new Date().toISOString(),
-            fechaTexto: obtenerFechaHoraLocal(new Date()),
-            datosPersonales: 'SILVA, JUAN - DNI: 12345678',
-            empresa: 'COFARMEN',
-            sector: 'Administracion',
-            anfitrion: 'Martin Marcelo',
-            observaciones: 'Visita de rutina',
-            modoEvento: false,
-            tipoVisita: 'Modo Normal'
-        },
-        {
-            id: 'demo-2',
-            fecha: new Date(Date.now() - 86400000).toISOString(),
-            fechaTexto: obtenerFechaHoraLocal(new Date(Date.now() - 86400000)),
-            datosPersonales: 'PEREZ, ANA - DNI: 87654321',
-            empresa: 'MERCADO LIBRE',
-            sector: 'Recepción Nave 1',
-            anfitrion: 'Paris Sebastian',
-            observaciones: 'Ingreso por coordinación',
-            modoEvento: true,
-            tipoVisita: 'Modo Evento'
-        }
-    ];
-    poblarFiltros();
-    filtrarVisitas();
-    cargarVisitasDesdeServidor();
-    abrirVista('registro');
+    cargarContactosWhatsapp();
     if (escaneoRawInput) escaneoRawInput.focus();
 });
