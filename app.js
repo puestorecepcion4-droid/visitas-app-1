@@ -116,6 +116,7 @@ const btnLimpiar = document.getElementById('btnLimpiar');
 const formProcessing = document.getElementById('formProcessing');
 const formProcessingMessage = document.getElementById('formProcessingMessage');
 const whatsappContactPanel = document.getElementById('whatsappContactPanel');
+const btnCerrarWhatsApp = document.getElementById('btnCerrarWhatsApp');
 const whatsappContactSearch = document.getElementById('whatsappContactSearch');
 const whatsappContactSuggestions = document.getElementById('whatsappContactSuggestions');
 const whatsappContactSelection = document.getElementById('whatsappContactSelection');
@@ -149,6 +150,10 @@ function esMostrador() {
 function obtenerDniIngresado() {
     const valor = escaneoRawInput?.value.trim() || '';
     return /^[\d.\s-]+$/.test(valor) ? valor.replace(/\D/g, '') : '';
+}
+
+function normalizarTexto(valor) {
+    return String(valor || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9\s]/g, '');
 }
 
 function actualizarCamposMostrador() {
@@ -221,8 +226,12 @@ if (anfitrionSelect) {
 }
 
 function extraerDni(datosPersonales) {
-    const coincidencia = String(datosPersonales || '').match(/\bDNI\s*:\s*(\d{6,9})\b/i);
-    return coincidencia ? coincidencia[1] : '';
+    const texto = String(datosPersonales || '');
+    const textoConDni = texto.match(/D[\s.]*N[\s.]*I(?:\s*(?:N[º°.]?|NUMERO))?\s*[:#-]?\s*(\d[\d\s.-]*)/i);
+    const segmentosNumericos = (textoConDni ? textoConDni[1] : texto).match(/\d[\d\s.-]*\d/g) || [];
+    return segmentosNumericos
+        .map((segmento) => segmento.replace(/\D/g, ''))
+        .find((dni) => dni.length >= 6 && dni.length <= 9) || '';
 }
 
 let consultaDniActual = 0;
@@ -246,7 +255,8 @@ function actualizarSugerenciasDni(inmediato = false) {
     if (timeoutSugerenciasDni) clearTimeout(timeoutSugerenciasDni);
     dniSugerencias.replaceChildren();
 
-    if (consulta.length < 3) {
+    const longitudMinima = inmediato ? 3 : 6;
+    if (consulta.length < longitudMinima) {
         ocultarSugerenciasDni();
         return;
     }
@@ -319,7 +329,7 @@ function actualizarSugerenciasDni(inmediato = false) {
             estado.textContent = error.message || 'No se pudo buscar en MOVIMIENTOS.';
             dniSugerencias.appendChild(estado);
         }
-    }, inmediato ? 0 : 180);
+    }, inmediato ? 0 : 350);
 }
 
 if (btnBuscarDni) {
@@ -455,6 +465,24 @@ function mostrarMensajeContactosWhatsapp(texto) {
 
 if (whatsappContactSearch) {
     whatsappContactSearch.addEventListener('input', mostrarSugerenciasContactosWhatsapp);
+}
+
+function cerrarPanelWhatsapp() {
+    whatsappContactPanel.hidden = true;
+    btnRegistrar?.focus();
+}
+
+if (btnCerrarWhatsApp) {
+    btnCerrarWhatsApp.addEventListener('click', cerrarPanelWhatsapp);
+}
+
+if (whatsappContactPanel) {
+    whatsappContactPanel.addEventListener('click', (evento) => {
+        if (evento.target === whatsappContactPanel) cerrarPanelWhatsapp();
+    });
+    document.addEventListener('keydown', (evento) => {
+        if (evento.key === 'Escape' && !whatsappContactPanel.hidden) cerrarPanelWhatsapp();
+    });
 }
 
 if (btnAbrirWhatsApp) {
@@ -818,6 +846,7 @@ if (btnRegistrar) {
                     ? 'Cargando contactos desde ANFITRIONES…'
                     : 'Busque y seleccione un contacto de ANFITRIONES.';
             whatsappContactPanel.hidden = false;
+            whatsappContactSearch.focus();
 
         } catch (error) {
             console.error("Error crítico de red:", error);
